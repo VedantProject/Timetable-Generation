@@ -33,33 +33,80 @@ export const generateTimetable = async (req, res) => {
     const jobId = `job_${Date.now()}`;
     activeJobs.set(jobId, { status: "running", progress: 0 });
     
+    // Stringify all ObjectIds before passing to Worker thread
+    // Worker thread serialization converts BSON ObjectIds to plain objects,
+    // losing their .toString() method. Pre-stringifying prevents [object Object] keys.
+    const cleanCourses = courses.map(c => ({
+      ...c,
+      _id: c._id.toString(),
+      sections: c.sections.map(s => ({
+        ...s,
+        _id: s._id?.toString(),
+        assignedFacultyId: s.assignedFacultyId?.toString()
+      }))
+    }));
+    const cleanRooms = rooms.map(r => ({ ...r, _id: r._id.toString() }));
+    const cleanFacultyPrefs = facultyPreferences.map(fp => ({
+      ...fp,
+      _id: fp._id?.toString(),
+      facultyId: fp.facultyId?.toString()
+    }));
+    const cleanConstraints = constraints.toObject();
+    cleanConstraints._id = cleanConstraints._id?.toString();
+    if (cleanConstraints.rooms) {
+      cleanConstraints.rooms = cleanConstraints.rooms.map(r => r?.toString());
+    }
+
     const workerPath = path.resolve(__dirname, "../workers/timetableWorker.js");
     const worker = new Worker(workerPath, {
       workerData: {
-        courses,
-        rooms,
-        constraints: constraints.toObject(),
-        facultyPreferences
+        courses: cleanCourses,
+        rooms: cleanRooms,
+        constraints: cleanConstraints,
+        facultyPreferences: cleanFacultyPrefs
       }
     });
     
     worker.on("message", async (result) => {
       if (result.success) {
         try {
-          // Save draft timetable
-          await Timetable.deleteMany({ semester, department }); // Drop old one
+          const rawEntries = result.timetable || [];
+
+          // Guard: worker returned 0 entries — treat as failure
+          if (rawEntries.length === 0) {
+            activeJobs.set(jobId, {
+              status: "failed",
+              error: "Worker returned success but generated 0 entries. " +
+                     "Ensure all course sections have a faculty member assigned."
+            });
+            return;
+          }
+
+          // Remove null facultyId so Mongoose ObjectId validation doesn't fail
+          const cleanEntries = rawEntries.map(e => {
+            const entry = { ...e };
+            if (!entry.facultyId) delete entry.facultyId;
+            return entry;
+          });
+
+          console.log(`[Generate] Saving ${cleanEntries.length} entries to DB...`);
+
+          // Delete old, then create new — atomic within the try/catch
+          await Timetable.deleteMany({ semester, department });
           
           await Timetable.create({
             semester,
             department,
             status: "draft",
-            entries: result.timetable,
-            auditLog: [{ changeType: "manual_override", description: "Initial Generation", changedBy: req.user._id }]
+            entries: cleanEntries,
+            auditLog: [{ changeType: "manual_override", description: "Algorithm Generation", changedBy: req.user._id }]
           });
           
-          activeJobs.set(jobId, { status: "completed", result: "Draft created successfully" });
+          console.log(`[Generate] ✅ Saved successfully — ${cleanEntries.length} entries`);
+          activeJobs.set(jobId, { status: "completed", result: `${cleanEntries.length} entries saved` });
         } catch (dbErr) {
-          activeJobs.set(jobId, { status: "failed", error: dbErr.message });
+          console.error("[Generate] DB save error:", dbErr.message);
+          activeJobs.set(jobId, { status: "failed", error: "DB save failed: " + dbErr.message });
         }
       } else {
         activeJobs.set(jobId, { status: "failed", error: result.reason });

@@ -21,7 +21,7 @@ const timetableEntrySchema = new mongoose.Schema({
   facultyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-    required: true,
+    required: false,
   },
   roomId: {
     type: mongoose.Schema.Types.ObjectId,
