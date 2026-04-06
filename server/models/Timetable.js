@@ -18,6 +18,10 @@ const timetableEntrySchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  year: {
+    type: Number,
+    required: true,
+  },
   facultyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
