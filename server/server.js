@@ -8,6 +8,7 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import facultyRoutes from "./routes/facultyRoutes.js";
+import timetableRoutes from "./routes/timetableRoutes.js";
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use(morgan("dev"));
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/faculty", facultyRoutes);
+app.use("/api/timetable", timetableRoutes);
 
 // Base route
 app.get("/", (req, res) => {

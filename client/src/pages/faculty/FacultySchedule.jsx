@@ -3,6 +3,19 @@ import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 import { CalendarDays, Loader2, MapPin, Clock } from 'lucide-react';
 
+const getIdString = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value._id) return String(value._id);
+  return String(value);
+};
+
+const getYearLabel = (year) => {
+  if (year === 2) return '2nd Yr';
+  if (year === 3) return '3rd Yr';
+  return `${year}th Yr`;
+};
+
 const FacultySchedule = () => {
   const { user } = useContext(AuthContext);
   const [semester, setSemester] = useState('Fall 2024');
@@ -13,10 +26,7 @@ const FacultySchedule = () => {
     const fetchTimetable = async () => {
       setLoading(true);
       try {
-        const { data } = await api.get(`/admin/timetable/${semester}`);
-        // Only show if published, or if we allow faculty to see drafts? 
-        // Prompt says "Student – Read-only view... of published" 
-        // "Faculty - Schedule view". Usually they can see drafts to review. Let's allow it but label it.
+        const { data } = await api.get(`/timetable/${semester}`);
         setTimetable(data);
       } catch (error) {
         setTimetable(null);
@@ -29,13 +39,19 @@ const FacultySchedule = () => {
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const periods = [1, 2, 3, 4, 5, 6, 7, 8];
+  const teacherEntries = timetable?.entries?.filter(entry =>
+    getIdString(entry.facultyId) === getIdString(user?._id)
+  ) || [];
+  const mappedSections = [...new Set(
+    teacherEntries.map(entry => `${entry.year}${entry.sectionId}`)
+  )].sort((a, b) => a.localeCompare(b));
 
   return (
     <div className="space-y-6 animate-fade-in-up flex flex-col h-full">
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">My Schedule</h2>
-          <p className="text-slate-500 mt-1">Review your mapped classes and laboratory sessions.</p>
+          <p className="text-slate-500 mt-1">Review your mapped classes and laboratory sessions across all four classes.</p>
         </div>
         <select value={semester} onChange={e => setSemester(e.target.value)} className="px-4 py-2 border rounded-xl outline-none font-semibold focus:ring-2 focus:ring-emerald-500 bg-slate-50">
           <option value="Fall 2024">Fall 2024</option>
@@ -54,6 +70,11 @@ const FacultySchedule = () => {
            </div>
         ) : (
           <>
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-700">
+                Assigned classes: {mappedSections.length > 0 ? mappedSections.join(' • ') : 'None'}
+              </p>
+            </div>
             {timetable.status === 'draft' && (
               <div className="bg-amber-50 text-amber-700 p-3 text-center text-sm font-bold border-b border-amber-200">
                 Notice: This timetable is currently a DRAFT. Changes may occur before publication.
@@ -75,13 +96,11 @@ const FacultySchedule = () => {
                     <tr key={day}>
                       <td className="border border-slate-200 p-3 font-semibold text-slate-700 bg-slate-50">
                         {day}
-                      </td>
+                    </td>
                       {periods.map(period => {
-                        // Filter entries that belong to this faculty
-                        const entries = timetable.entries.filter(e => 
+                        const entries = teacherEntries.filter(e => 
                           e.day === day && 
-                          e.period === period && 
-                          e.facultyId?._id === user._id
+                          e.period === period
                         );
 
                         return (
@@ -102,7 +121,7 @@ const FacultySchedule = () => {
                                       {e.courseId?.courseCode}
                                     </span>
                                     <span className="text-[10px] bg-white px-2 py-0.5 rounded-md font-bold shadow-sm border border-slate-100 text-slate-600">
-                                      Sec {e.sectionId}
+                                      {getYearLabel(e.year)} Sec {e.sectionId}
                                     </span>
                                   </div>
                                   

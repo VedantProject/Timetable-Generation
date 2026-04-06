@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
-import { CalendarDays, Loader2, MapPin, Clock } from 'lucide-react';
+import { CalendarDays, Loader2, MapPin } from 'lucide-react';
+
+const CLASS_OPTIONS = [
+  { value: '2-A', label: '2nd Sec A', year: 2, sectionId: 'A' },
+  { value: '2-B', label: '2nd Sec B', year: 2, sectionId: 'B' },
+  { value: '3-A', label: '3rd Sec A', year: 3, sectionId: 'A' },
+  { value: '3-B', label: '3rd Sec B', year: 3, sectionId: 'B' },
+];
 
 const StudentSchedule = () => {
   const [semester, setSemester] = useState('Fall 2024');
-  const [section, setSection] = useState('A');
+  const [selectedClass, setSelectedClass] = useState('2-A');
   const [loading, setLoading] = useState(true);
   const [timetable, setTimetable] = useState(null);
 
@@ -12,7 +19,7 @@ const StudentSchedule = () => {
     const fetchTimetable = async () => {
       setLoading(true);
       try {
-        const { data } = await api.get(`/admin/timetable/${semester}`);
+        const { data } = await api.get(`/timetable/${semester}`);
         // Students should only see published timetables
         if (data && data.status === 'published') {
           setTimetable(data);
@@ -30,6 +37,10 @@ const StudentSchedule = () => {
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const periods = [1, 2, 3, 4, 5, 6, 7, 8];
+  const activeClass = CLASS_OPTIONS.find(option => option.value === selectedClass) || CLASS_OPTIONS[0];
+  const visibleEntries = timetable?.entries?.filter(entry =>
+    entry.year === activeClass.year && entry.sectionId === activeClass.sectionId
+  ) || [];
 
   return (
     <div className="space-y-6 animate-fade-in-up flex flex-col h-full">
@@ -39,8 +50,10 @@ const StudentSchedule = () => {
           <p className="text-slate-500 mt-1">Review your weekly classes and lab blocks mapping.</p>
         </div>
         <div className="flex space-x-3">
-          <select value={section} onChange={e => setSection(e.target.value)} className="px-4 py-2 border border-slate-200 rounded-xl outline-none font-bold text-slate-700 focus:ring-2 focus:ring-amber-500 bg-amber-50">
-            {['A', 'B', 'C', 'D'].map(s => <option key={s} value={s}>Section {s}</option>)}
+          <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="px-4 py-2 border border-slate-200 rounded-xl outline-none font-bold text-slate-700 focus:ring-2 focus:ring-amber-500 bg-amber-50">
+            {CLASS_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
           </select>
           <select value={semester} onChange={e => setSemester(e.target.value)} className="px-4 py-2 border border-slate-200 rounded-xl outline-none font-semibold focus:ring-2 focus:ring-amber-500 bg-slate-50">
             <option value="Fall 2024">Fall 2024</option>
@@ -76,10 +89,9 @@ const StudentSchedule = () => {
                       {day}
                     </td>
                     {periods.map(period => {
-                      const entries = timetable.entries.filter(e => 
+                      const entries = visibleEntries.filter(e => 
                         e.day === day && 
-                        e.period === period && 
-                        e.sectionId === section
+                        e.period === period
                       );
 
                       return (

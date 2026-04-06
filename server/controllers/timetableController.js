@@ -161,6 +161,28 @@ export const getTimetable = async (req, res) => {
   }
 };
 
+// @desc    Get published timetable for authenticated users
+// @route   GET /api/timetable/:semester
+// @access  Private
+export const getVisibleTimetable = async (req, res) => {
+  try {
+    const timetable = await Timetable.findOne({ semester: req.params.semester })
+      .populate("entries.courseId entries.facultyId entries.roomId entries.originalEntryId");
+
+    if (!timetable) {
+      return res.status(404).json({ message: "Timetable not found for this semester" });
+    }
+
+    if (req.user.role !== "admin" && timetable.status !== "published") {
+      return res.status(404).json({ message: "Timetable has not been published yet" });
+    }
+
+    res.json(timetable);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 // @desc    Publish timetable
 // @route   PATCH /api/admin/timetable/:semester/publish
 // @access  Private/Admin
@@ -269,4 +291,3 @@ export const moveTimetableEntry = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
