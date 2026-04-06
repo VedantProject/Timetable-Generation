@@ -91,14 +91,21 @@ log(`Valid slots: ${ALL_SLOTS.length}`);
 const facOccupied  = {};  // [facId][day_P] = true
 const roomOccupied = {};  // [roomId][day_P] = true
 const secOccupied  = {};  // [batchId][day_P] = true
+// Tracks which courseId is positioned at a given batchId+day+period
+// Used to prevent the SAME theory course in consecutive periods
+const courseAtSlot = {}; // [batchId][day_P] = courseId
 
 const key = (day, period) => `${day}_${period}`;
 
-const occupy = (day, period, facId, batchId, roomId) => {
+const occupy = (day, period, facId, batchId, roomId, courseId) => {
   const k = key(day, period);
   if (facId)   { if (!facOccupied[facId])    facOccupied[facId]   = {}; facOccupied[facId][k]   = true; }
   if (batchId) { if (!secOccupied[batchId])  secOccupied[batchId] = {}; secOccupied[batchId][k] = true; }
   if (roomId)  { if (!roomOccupied[roomId])  roomOccupied[roomId] = {}; roomOccupied[roomId][k] = true; }
+  if (batchId && courseId) {
+    if (!courseAtSlot[batchId]) courseAtSlot[batchId] = {};
+    courseAtSlot[batchId][k] = courseId;
+  }
 };
 
 const isSlotFree = (day, period, facId, batchId, roomId) => {
@@ -109,6 +116,18 @@ const isSlotFree = (day, period, facId, batchId, roomId) => {
   if (batchId && secOccupied[batchId]?.[k]) return false;
   if (roomId  && roomOccupied[roomId]?.[k]) return false;
   return true;
+};
+
+// Check if placing courseId at (batchId, day, period) would create consecutive same-course
+const wouldBeConsecutiveSameCourse = (day, period, batchId, courseId) => {
+  if (!courseId || !batchId) return false;
+  const slotMap = courseAtSlot[batchId] || {};
+  const prevKey = key(day, period - 1);
+  const nextKey = key(day, period + 1);
+  // Reject if same course already at period-1 or period+1 on same day
+  if (slotMap[prevKey] === courseId) return true;
+  if (slotMap[nextKey] === courseId) return true;
+  return false;
 };
 
 // ── Generation ───────────────────────────────────────────────────────────────
@@ -164,7 +183,8 @@ const generateTimetable = () => {
             // Allocate
             for (let i = 0; i < lab.hours; i++) {
               const p = start + i;
-              occupy(day, p, lab.facultyId, lab.batchId, room._id);
+              // Labs are continuous by design — no consecutive-same-course issue needed here
+              occupy(day, p, lab.facultyId, lab.batchId, room._id, lab.courseId);
               timetable.push({
                 day, period: p, year: lab.year,
                 courseId: lab.courseId, sectionId: lab.sectionId,
@@ -207,11 +227,14 @@ const generateTimetable = () => {
 
       // Try slots in "spread" order (interleaved across days)
       for (const slot of ALL_SLOTS) {
+        // Reject if same course already in the adjacent period (consecutive same-course rule)
+        if (wouldBeConsecutiveSameCourse(slot.day, slot.period, node.batchId, node.courseId)) continue;
+
         // Find a free theory room
         for (const room of theoryRooms) {
           if (!isSlotFree(slot.day, slot.period, node.facultyId, node.batchId, room._id)) continue;
 
-          occupy(slot.day, slot.period, node.facultyId, node.batchId, room._id);
+          occupy(slot.day, slot.period, node.facultyId, node.batchId, room._id, node.courseId);
           timetable.push({
             day: slot.day, period: slot.period, year: node.year,
             courseId: node.courseId, sectionId: node.sectionId,
