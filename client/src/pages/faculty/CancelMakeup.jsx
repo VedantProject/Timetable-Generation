@@ -3,6 +3,13 @@ import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 import { XCircle, RefreshCw, CalendarOff, Loader2 } from 'lucide-react';
 
+const getIdString = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value._id) return String(value._id);
+  return String(value);
+};
+
 const CancelMakeup = () => {
   const { user } = useContext(AuthContext);
   const [semester, setSemester] = useState('Fall 2024');
@@ -19,13 +26,13 @@ const CancelMakeup = () => {
     setLoading(true);
     try {
       const [ttRes, csRes] = await Promise.all([
-        api.get(`/admin/timetable/${semester}`),
-        api.get(`/admin/constraints/${semester}`)
+        api.get(`/timetable/${semester}`),
+        api.get(`/faculty/constraints/${semester}`)
       ]);
       
       if (ttRes.data && ttRes.data.entries) {
         // Filter classes belonging to the faculty
-        const facEntries = ttRes.data.entries.filter(e => e.facultyId?._id === user._id);
+        const facEntries = ttRes.data.entries.filter(e => getIdString(e.facultyId) === getIdString(user._id));
         setEntries(facEntries);
       }
       
@@ -47,13 +54,18 @@ const CancelMakeup = () => {
   }, [semester]);
 
   const handleCancelClass = async (entryId) => {
-    if(!window.confirm("Are you sure you want to cancel this class? Students will be notified.")) return;
+    const currentEntry = entries.find(entry => entry._id === entryId);
+    const isRemovingCancel = currentEntry?.isCancelled;
+    const message = isRemovingCancel
+      ? "Remove the cancel status and restore this class for students?"
+      : "Are you sure you want to cancel this class? Students will see it as class canceled.";
+    if(!window.confirm(message)) return;
     try {
       await api.patch(`/faculty/timetable/entry/${entryId}/cancel`);
-      alert("Class cancelled.");
+      alert(isRemovingCancel ? "Class restored." : "Class canceled.");
       fetchData();
     } catch (error) {
-      alert("Error cancelling class.");
+      alert("Error updating class cancellation.");
     }
   };
 
@@ -136,12 +148,20 @@ const CancelMakeup = () => {
                       <XCircle size={16} className="mr-2" /> Cancel Class
                     </button>
                   ) : (
-                    <button 
-                      onClick={() => handleOpenReschedule(entry)}
-                      className="flex-1 flex justify-center items-center py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-semibold rounded-lg transition-colors text-sm"
-                    >
-                      <RefreshCw size={16} className="mr-2" /> Schedule Makeup
-                    </button>
+                    <>
+                      <button 
+                        onClick={() => handleCancelClass(entry._id)}
+                        className="flex-1 flex justify-center items-center py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg transition-colors text-sm"
+                      >
+                        <RefreshCw size={16} className="mr-2" /> Remove Cancel
+                      </button>
+                      <button 
+                        onClick={() => handleOpenReschedule(entry)}
+                        className="flex-1 flex justify-center items-center py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-semibold rounded-lg transition-colors text-sm"
+                      >
+                        <RefreshCw size={16} className="mr-2" /> Schedule Makeup
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

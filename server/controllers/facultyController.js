@@ -1,4 +1,5 @@
 import FacultyPreference from "../models/FacultyPreference.js";
+import InstitutionalConstraint from "../models/InstitutionalConstraint.js";
 
 // @desc    Get my preferences
 // @route   GET /api/faculty/preferences/:semester
@@ -72,17 +73,39 @@ export const cancelClass = async (req, res) => {
       return res.status(403).json({ message: "Not authorized to cancel this class." });
     }
     
-    entry.isCancelled = true;
+    entry.isCancelled = !entry.isCancelled;
     
     timetable.auditLog.push({
       changedBy: req.user._id,
       changeType: "cancellation",
-      description: `Cancelled course ${entry.courseId} on ${entry.day} period ${entry.period}`
+      description: `${entry.isCancelled ? "Cancelled" : "Restored"} course ${entry.courseId} on ${entry.day} period ${entry.period}`
     });
     
     await timetable.save();
     
-    res.json({ message: "Class cancelled successfully", entry });
+    res.json({
+      message: entry.isCancelled ? "Class canceled successfully" : "Class cancellation removed successfully",
+      entry
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// @desc    Get faculty-visible constraints
+// @route   GET /api/faculty/constraints/:semester
+// @access  Private/Faculty
+export const getFacultyConstraints = async (req, res) => {
+  try {
+    const constraint = await InstitutionalConstraint.findOne({
+      semester: req.params.semester,
+    }).populate("rooms");
+
+    if (constraint) {
+      res.json(constraint);
+    } else {
+      res.status(404).json({ message: "Constraints not found for this semester" });
+    }
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -149,4 +172,3 @@ export const makeupClass = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-

@@ -1,6 +1,6 @@
 import express from "express";
 import { protect, authorize } from "../middleware/authMiddleware.js";
-import { getMyPreferences, submitPreferences, cancelClass, makeupClass } from "../controllers/facultyController.js";
+import { getMyPreferences, submitPreferences, cancelClass, makeupClass, getFacultyConstraints } from "../controllers/facultyController.js";
 
 const router = express.Router();
 
@@ -13,6 +13,7 @@ router.route("/preferences")
 router.route("/preferences/:semester")
   .get(getMyPreferences);
 
+router.get("/constraints/:semester", getFacultyConstraints);
 router.patch("/timetable/entry/:entryId/cancel", cancelClass);
 router.post("/timetable/makeup", makeupClass);
 
