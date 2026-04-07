@@ -3,6 +3,9 @@ import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 import { XCircle, RefreshCw, CalendarOff, Loader2 } from 'lucide-react';
 
+const RESCHEDULE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
+
 const getIdString = (value) => {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -21,6 +24,14 @@ const CancelMakeup = () => {
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [makeupForm, setMakeupForm] = useState({ newDay: 'Monday', newPeriod: 1, newRoomId: '' });
   const [rooms, setRooms] = useState([]);
+
+  const selectedRoomOptions = rooms.filter(room => {
+    if (!selectedEntry) return true;
+    return !!room.isLab === !!selectedEntry.isLab;
+  });
+
+  const getLinkedMakeup = (entryId) =>
+    entries.find(entry => entry.isMakeup && getIdString(entry.originalEntryId) === getIdString(entryId));
 
   const fetchData = async () => {
     setLoading(true);
@@ -70,23 +81,34 @@ const CancelMakeup = () => {
   };
 
   const handleOpenReschedule = (entry) => {
+    const matchingRooms = rooms.filter(room => !!room.isLab === !!entry.isLab);
     setSelectedEntry(entry);
-    setMakeupForm({ newDay: 'Monday', newPeriod: 1, newRoomId: rooms[0]?._id });
+    setMakeupForm({ newDay: 'Monday', newPeriod: 1, newRoomId: matchingRooms[0]?._id || '' });
     setIsRescheduleOpen(true);
   };
 
   const submitMakeup = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/faculty/timetable/makeup', {
+      const { data } = await api.post('/faculty/timetable/makeup', {
         originalEntryId: selectedEntry._id,
         ...makeupForm
       });
-      alert("Makeup class scheduled successfully!");
+      await fetchData();
+      alert(data?.message || "Makeup class scheduled successfully!");
       setIsRescheduleOpen(false);
-      fetchData();
     } catch (error) {
-      alert(`Conflict Detected:\n${error.response?.data?.details || "Failed to schedule."}`);
+      const status = error.response?.status;
+      const message =
+        error.response?.data?.details ||
+        error.response?.data?.message ||
+        "Failed to schedule.";
+
+      if (status === 409) {
+        alert(`Conflict Detected:\n${message}`);
+      } else {
+        alert(message);
+      }
     }
   };
 
@@ -126,44 +148,82 @@ const CancelMakeup = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
             {entries.filter(e => !e.isMakeup).map(entry => (
               <div key={entry._id} className={`border p-5 rounded-2xl transition-all shadow-sm ${entry.isCancelled ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white border-emerald-100 hover:shadow-md'}`}>
+                {(() => {
+                  const linkedMakeup = getLinkedMakeup(entry._id);
+
+                  return (
+                    <>
                 
+                      <div className="flex justify-between items-start mb-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${getDayColor(entry.day)}`}>
+                          {entry.day} • P{entry.period}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {linkedMakeup && (
+                            <span className="bg-indigo-100 text-indigo-700 font-bold text-[10px] px-2 py-1 rounded">MAKEUP EXISTS</span>
+                          )}
+                          {entry.isCancelled && <span className="bg-rose-100 text-rose-700 font-bold text-[10px] px-2 py-1 rounded">CANCELLED</span>}
+                        </div>
+                      </div>
+
+                      <h3 className={`font-black text-xl mb-1 ${entry.isCancelled ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                        {entry.courseId?.courseCode} - {entry.sectionId}
+                      </h3>
+                      <p className="text-sm font-semibold text-slate-500 mb-2">{entry.roomId?.roomId} | {entry.isLab ? 'Laboratory' : 'Theory'}</p>
+                      {linkedMakeup && (
+                        <p className="text-xs text-indigo-700 font-semibold mb-4">
+                          Makeup scheduled for {linkedMakeup.day} P{linkedMakeup.period}. Restore this class to remove it.
+                        </p>
+                      )}
+
+                      <div className="flex space-x-2 border-t pt-4 border-slate-100">
+                        {!entry.isCancelled ? (
+                          <button 
+                            onClick={() => handleCancelClass(entry._id)}
+                            className="flex-1 flex justify-center items-center py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 font-semibold rounded-lg transition-colors text-sm"
+                          >
+                            <XCircle size={16} className="mr-2" /> Cancel Class
+                          </button>
+                        ) : (
+                          <>
+                            <button 
+                              onClick={() => handleCancelClass(entry._id)}
+                              className="flex-1 flex justify-center items-center py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg transition-colors text-sm"
+                            >
+                              <RefreshCw size={16} className="mr-2" /> Remove Cancel
+                            </button>
+                            <button 
+                              onClick={() => handleOpenReschedule(entry)}
+                              disabled={!!linkedMakeup}
+                              className="flex-1 flex justify-center items-center py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed font-semibold rounded-lg transition-colors text-sm"
+                            >
+                              <RefreshCw size={16} className="mr-2" /> Schedule Makeup
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            ))}
+
+            {entries.filter(e => e.isMakeup).map(entry => (
+              <div key={entry._id} className="border p-5 rounded-2xl transition-all shadow-sm bg-indigo-50 border-indigo-200">
                 <div className="flex justify-between items-start mb-3">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${getDayColor(entry.day)}`}>
                     {entry.day} • P{entry.period}
                   </span>
-                  {entry.isCancelled && <span className="bg-rose-100 text-rose-700 font-bold text-[10px] px-2 py-1 rounded">CANCELLED</span>}
+                  <span className="bg-indigo-100 text-indigo-700 font-bold text-[10px] px-2 py-1 rounded">MAKEUP</span>
                 </div>
 
-                <h3 className={`font-black text-xl mb-1 ${entry.isCancelled ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                <h3 className="font-black text-xl mb-1 text-slate-800">
                   {entry.courseId?.courseCode} - {entry.sectionId}
                 </h3>
-                <p className="text-sm font-semibold text-slate-500 mb-4">{entry.roomId?.roomId} | {entry.isLab ? 'Laboratory' : 'Theory'}</p>
-
-                <div className="flex space-x-2 border-t pt-4 border-slate-100">
-                  {!entry.isCancelled ? (
-                    <button 
-                      onClick={() => handleCancelClass(entry._id)}
-                      className="flex-1 flex justify-center items-center py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 font-semibold rounded-lg transition-colors text-sm"
-                    >
-                      <XCircle size={16} className="mr-2" /> Cancel Class
-                    </button>
-                  ) : (
-                    <>
-                      <button 
-                        onClick={() => handleCancelClass(entry._id)}
-                        className="flex-1 flex justify-center items-center py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg transition-colors text-sm"
-                      >
-                        <RefreshCw size={16} className="mr-2" /> Remove Cancel
-                      </button>
-                      <button 
-                        onClick={() => handleOpenReschedule(entry)}
-                        className="flex-1 flex justify-center items-center py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-semibold rounded-lg transition-colors text-sm"
-                      >
-                        <RefreshCw size={16} className="mr-2" /> Schedule Makeup
-                      </button>
-                    </>
-                  )}
-                </div>
+                <p className="text-sm font-semibold text-slate-500 mb-2">{entry.roomId?.roomId} | {entry.isLab ? 'Laboratory' : 'Theory'}</p>
+                <p className="text-xs text-indigo-700 font-semibold">
+                  This rescheduled class is already live for admin and students.
+                </p>
               </div>
             ))}
           </div>
@@ -184,22 +244,25 @@ const CancelMakeup = () => {
                  <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">Select Day</label>
                     <select required className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" value={makeupForm.newDay} onChange={e => setMakeupForm({...makeupForm, newDay: e.target.value})}>
-                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(d => <option key={d} value={d}>{d}</option>)}
+                      {RESCHEDULE_DAYS.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                  </div>
                  
                  <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">Select Period</label>
                     <select required className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" value={makeupForm.newPeriod} onChange={e => setMakeupForm({...makeupForm, newPeriod: parseInt(e.target.value)})}>
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map(p => <option key={p} value={p}>Period {p}</option>)}
+                      {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
                     </select>
                  </div>
 
                  <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">Select Available Room</label>
                     <select required className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" value={makeupForm.newRoomId} onChange={e => setMakeupForm({...makeupForm, newRoomId: e.target.value})}>
-                      {rooms.map(r => <option key={r._id} value={r._id}>{r.roomId} (Cap: {r.capacity})</option>)}
+                      {selectedRoomOptions.map(r => <option key={r._id} value={r._id}>{r.roomId} (Cap: {r.capacity})</option>)}
                     </select>
+                    <p className="text-xs text-slate-400 mt-2">
+                      {selectedEntry?.isLab ? 'Only lab rooms are shown for lab reschedules.' : 'Only theory rooms are shown for theory reschedules.'}
+                    </p>
                  </div>
 
                  <div className="pt-4 flex space-x-3">

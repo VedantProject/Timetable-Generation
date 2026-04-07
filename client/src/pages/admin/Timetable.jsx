@@ -202,6 +202,16 @@ const DraggableEntryCard = ({ entry, entries, isMoving }) => {
             {isLabContinuation ? `LAB ${entry.labBlock}` : 'LAB'}
           </span>
         )}
+        {entry.isMakeup && (
+          <span className="ml-1 text-[8px] font-bold text-violet-700 bg-violet-100 px-0.5 rounded">
+            MAKEUP
+          </span>
+        )}
+        {entry.isCancelled && (
+          <span className="ml-1 text-[8px] font-bold text-rose-700 bg-rose-100 px-0.5 rounded">
+            CANCELED
+          </span>
+        )}
       </div>
       <div className="text-[9px] text-slate-500 truncate">
         {entry.facultyId?.name?.split(' ').slice(0, 2).join(' ') || '—'}
