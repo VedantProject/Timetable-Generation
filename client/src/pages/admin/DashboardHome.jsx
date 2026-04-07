@@ -1,15 +1,40 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { Activity, Clock, Box, Users as UsersIcon } from 'lucide-react';
+import api from '../../api/axios';
 
 const DashboardHome = () => {
   const { user } = useContext(AuthContext);
+  const [dashboardStats, setDashboardStats] = useState({
+    totalUsers: 0,
+    activeCourses: 0,
+    schedulesGenerated: 0,
+    systemStatus: 'Healthy',
+  });
+
+  useEffect(() => {
+    const fetchDashboardStats = async () => {
+      try {
+        const { data } = await api.get('/admin/dashboard/stats');
+        setDashboardStats({
+          totalUsers: data.totalUsers ?? 0,
+          activeCourses: data.activeCourses ?? 0,
+          schedulesGenerated: data.schedulesGenerated ?? 0,
+          systemStatus: data.systemStatus || 'Healthy',
+        });
+      } catch (error) {
+        console.error('Failed to fetch dashboard stats', error);
+      }
+    };
+
+    fetchDashboardStats();
+  }, []);
   
   const stats = [
-    { title: "Total Users", value: "142", icon: <UsersIcon size={24} className="text-blue-500"/>, color: "bg-blue-50" },
-    { title: "Active Courses", value: "48", icon: <Box size={24} className="text-emerald-500"/>, color: "bg-emerald-50" },
-    { title: "Schedules Generated", value: "5", icon: <Clock size={24} className="text-purple-500"/>, color: "bg-purple-50" },
-    { title: "System Status", value: "Healthy", icon: <Activity size={24} className="text-rose-500"/>, color: "bg-rose-50" },
+    { title: "Total Users", value: dashboardStats.totalUsers, icon: <UsersIcon size={24} className="text-blue-500"/>, color: "bg-blue-50" },
+    { title: "Active Courses", value: dashboardStats.activeCourses, icon: <Box size={24} className="text-emerald-500"/>, color: "bg-emerald-50" },
+    { title: "Schedules Generated", value: dashboardStats.schedulesGenerated, icon: <Clock size={24} className="text-purple-500"/>, color: "bg-purple-50" },
+    { title: "System Status", value: dashboardStats.systemStatus, icon: <Activity size={24} className="text-rose-500"/>, color: "bg-rose-50" },
   ];
 
   return (

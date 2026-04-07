@@ -1,6 +1,7 @@
 import express from "express";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 import {
+  getDashboardStats,
   getUsers,
   createUser,
   updateUser,
@@ -29,6 +30,8 @@ router.use(protect);
 router.use(authorize("admin"));
 
 // User Management
+router.get("/dashboard/stats", getDashboardStats);
+
 router.route("/users")
   .get(getUsers)
   .post(createUser);

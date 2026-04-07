@@ -3,7 +3,30 @@ import InstitutionalConstraint from "../models/InstitutionalConstraint.js";
 import Room from "../models/Room.js";
 import Course from "../models/Course.js";
 import FacultyPreference from "../models/FacultyPreference.js";
+import Timetable from "../models/Timetable.js";
 import bcrypt from "bcryptjs";
+
+// @desc    Get admin dashboard stats
+// @route   GET /api/admin/dashboard/stats
+// @access  Private/Admin
+export const getDashboardStats = async (req, res) => {
+  try {
+    const [totalUsers, activeCourses, schedulesGenerated] = await Promise.all([
+      User.countDocuments({}),
+      Course.countDocuments({}),
+      Timetable.countDocuments({}),
+    ]);
+
+    res.json({
+      totalUsers,
+      activeCourses,
+      schedulesGenerated,
+      systemStatus: "Healthy",
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
 
 // @desc    Get all users
 // @route   GET /api/admin/users
