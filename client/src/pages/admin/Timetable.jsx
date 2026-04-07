@@ -207,6 +207,11 @@ const DraggableEntryCard = ({ entry, entries, isMoving }) => {
             MAKEUP
           </span>
         )}
+        {entry.isExtraClass && (
+          <span className="ml-1 text-[8px] font-bold text-amber-700 bg-amber-100 px-0.5 rounded">
+            EXTRA
+          </span>
+        )}
         {entry.isCancelled && (
           <span className="ml-1 text-[8px] font-bold text-rose-700 bg-rose-100 px-0.5 rounded">
             CANCELED

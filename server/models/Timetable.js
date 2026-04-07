@@ -47,6 +47,10 @@ const timetableEntrySchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isExtraClass: {
+    type: Boolean,
+    default: false,
+  },
   originalEntryId: {
     type: mongoose.Schema.Types.ObjectId,
   },

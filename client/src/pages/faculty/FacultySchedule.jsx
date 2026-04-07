@@ -137,6 +137,7 @@ const FacultySchedule = () => {
 
                                   {e.isCancelled && <div className="mt-1 text-[10px] font-bold text-rose-600">❌ CANCELLED</div>}
                                   {e.isMakeup && <div className="mt-1 text-[10px] font-bold text-purple-600">📌 MAKEUP</div>}
+                                  {e.isExtraClass && <div className="mt-1 text-[10px] font-bold text-amber-700">➕ EXTRA CLASS</div>}
                                   {e.isLab && !e.isCancelled && !e.isMakeup && <div className="mt-1 text-[10px] font-bold text-amber-600">🧪 LAB</div>}
                                 </div>
                               ))}
