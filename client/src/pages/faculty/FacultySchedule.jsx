@@ -3,6 +3,9 @@ import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 import { CalendarDays, Loader2, MapPin, Clock } from 'lucide-react';
 
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
+
 const getIdString = (value) => {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -37,8 +40,6 @@ const FacultySchedule = () => {
     fetchTimetable();
   }, [semester]);
 
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const periods = [1, 2, 3, 4, 5, 6, 7, 8];
   const teacherEntries = timetable?.entries?.filter(entry =>
     getIdString(entry.facultyId) === getIdString(user?._id)
   ) || [];
@@ -86,18 +87,18 @@ const FacultySchedule = () => {
                 <thead className="bg-slate-100 sticky top-0 z-10">
                   <tr>
                     <th className="border border-slate-200 p-3 text-slate-600 font-bold uppercase text-xs w-24">Day</th>
-                    {periods.map(p => (
+                    {PERIODS.map(p => (
                       <th key={p} className="border border-slate-200 p-3 text-center text-slate-600 font-bold uppercase text-xs">P{p}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {days.map(day => (
+                  {DAYS.map(day => (
                     <tr key={day}>
                       <td className="border border-slate-200 p-3 font-semibold text-slate-700 bg-slate-50">
                         {day}
                     </td>
-                      {periods.map(period => {
+                      {PERIODS.map(period => {
                         const entries = teacherEntries.filter(e => 
                           e.day === day && 
                           e.period === period

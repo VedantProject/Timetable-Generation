@@ -10,7 +10,8 @@ import {
   getCourses,
   createCourse,
   updateCourse,
-  bulkUploadFaculty
+  bulkUploadFaculty,
+  getFacultyPreferencesForSemester
 } from "../controllers/adminController.js";
 import {
   generateTimetable,
@@ -50,6 +51,7 @@ router.route("/courses/:id")
   .patch(updateCourse);
 
 router.post("/faculty/bulk-upload", bulkUploadFaculty);
+router.get("/faculty-preferences/:semester", getFacultyPreferencesForSemester);
 
 // Timetable
 router.post("/timetable/generate", generateTimetable);

@@ -2,6 +2,7 @@ import User from "../models/User.js";
 import InstitutionalConstraint from "../models/InstitutionalConstraint.js";
 import Room from "../models/Room.js";
 import Course from "../models/Course.js";
+import FacultyPreference from "../models/FacultyPreference.js";
 import bcrypt from "bcryptjs";
 
 // @desc    Get all users
@@ -247,6 +248,21 @@ export const bulkUploadFaculty = async (req, res) => {
     }
 
     res.json({ message: "Bulk upload completed successfully." });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// @desc    Get faculty preferences for a semester
+// @route   GET /api/admin/faculty-preferences/:semester
+// @access  Private/Admin
+export const getFacultyPreferencesForSemester = async (req, res) => {
+  try {
+    const preferences = await FacultyPreference.find({
+      semester: req.params.semester,
+    }).select("facultyId unavailableSlots preferredSlots maxWeeklyHours isLocked");
+
+    res.json(preferences);
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }

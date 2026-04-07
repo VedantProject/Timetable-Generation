@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import { CalendarDays, Loader2, MapPin } from 'lucide-react';
 
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
+
 const CLASS_OPTIONS = [
   { value: '2-A', label: '2nd Sec A', year: 2, sectionId: 'A' },
   { value: '2-B', label: '2nd Sec B', year: 2, sectionId: 'B' },
@@ -35,8 +38,6 @@ const StudentSchedule = () => {
     fetchTimetable();
   }, [semester]);
 
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const periods = [1, 2, 3, 4, 5, 6, 7, 8];
   const activeClass = CLASS_OPTIONS.find(option => option.value === selectedClass) || CLASS_OPTIONS[0];
   const visibleEntries = timetable?.entries?.filter(entry =>
     entry.year === activeClass.year && entry.sectionId === activeClass.sectionId
@@ -77,18 +78,18 @@ const StudentSchedule = () => {
               <thead className="bg-slate-100 sticky top-0 z-10">
                 <tr>
                   <th className="border border-slate-200 p-3 text-slate-600 font-bold uppercase text-xs w-24">Day</th>
-                  {periods.map(p => (
+                  {PERIODS.map(p => (
                     <th key={p} className="border border-slate-200 p-3 text-center text-slate-600 font-bold uppercase text-xs">P{p}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {days.map(day => (
+                {DAYS.map(day => (
                   <tr key={day}>
                     <td className="border border-slate-200 p-3 font-semibold text-slate-700 bg-slate-50">
                       {day}
                     </td>
-                    {periods.map(period => {
+                    {PERIODS.map(period => {
                       const entries = visibleEntries.filter(e => 
                         e.day === day && 
                         e.period === period

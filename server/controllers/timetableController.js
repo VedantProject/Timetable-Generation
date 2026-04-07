@@ -9,9 +9,112 @@ import Timetable from "../models/Timetable.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const RESCHEDULE_EXTRA_DAYS = ["Saturday"];
 
 // In-memory job queue for simplicity. In production, use Redis or a DB table for jobs.
 const activeJobs = new Map();
+
+const asId = (value) => (value == null ? "" : value.toString());
+
+const getLabBlockEntries = (entries, entry) => {
+  const courseId = asId(entry.courseId);
+  const facultyId = asId(entry.facultyId);
+
+  return entries
+    .filter((candidate) =>
+      candidate.isLab &&
+      !candidate.isCancelled &&
+      candidate.day === entry.day &&
+      candidate.sectionId === entry.sectionId &&
+      Number(candidate.year) === Number(entry.year) &&
+      asId(candidate.courseId) === courseId &&
+      asId(candidate.facultyId) === facultyId
+    )
+    .sort((a, b) => a.period - b.period);
+};
+
+const buildMoveContext = async (timetable, entry) => {
+  const constraint = await InstitutionalConstraint.findOne({
+    semester: timetable.semester,
+    department: timetable.department,
+  }).lean();
+
+  if (!constraint) {
+    return { error: { status: 400, message: "Constraints not found for this timetable" } };
+  }
+
+  const blockEntries = entry.isLab ? getLabBlockEntries(timetable.entries, entry) : [entry];
+  const moveEntries = blockEntries.length ? blockEntries : [entry];
+  const moveEntryIds = new Set(moveEntries.map((item) => asId(item._id)));
+
+  const rooms = await Room.find({
+    _id: { $in: constraint.rooms || [] },
+    isLab: !!entry.isLab,
+  }).lean();
+
+  if (!rooms.length) {
+    return {
+      error: {
+        status: 400,
+        message: entry.isLab
+          ? "No lab rooms are configured for this timetable"
+          : "No theory rooms are configured for this timetable",
+      },
+    };
+  }
+
+  const facultyPreference = entry.facultyId
+    ? await FacultyPreference.findOne({
+        semester: timetable.semester,
+        facultyId: entry.facultyId,
+      }).lean()
+    : null;
+
+  return {
+    constraint,
+    rooms,
+    facultyPreference,
+    moveEntries,
+    moveEntryIds,
+  };
+};
+
+const findCompatibleRoom = ({
+  entries,
+  moveEntries,
+  moveEntryIds,
+  rooms,
+  entry,
+  newDay,
+  newPeriod,
+}) => {
+  const orderedRooms = [...rooms].sort((a, b) => {
+    if (asId(a._id) === asId(entry.roomId)) return -1;
+    if (asId(b._id) === asId(entry.roomId)) return 1;
+    return String(a.roomId || "").localeCompare(String(b.roomId || ""));
+  });
+
+  for (const room of orderedRooms) {
+    const roomId = asId(room._id);
+    const roomFitsWholeBlock = moveEntries.every((blockEntry, index) => {
+      const targetPeriod = Number(newPeriod) + index;
+
+      return !entries.some((candidate) =>
+        !candidate.isCancelled &&
+        !moveEntryIds.has(asId(candidate._id)) &&
+        candidate.day === newDay &&
+        Number(candidate.period) === targetPeriod &&
+        asId(candidate.roomId) === roomId
+      );
+    });
+
+    if (roomFitsWholeBlock) {
+      return room;
+    }
+  }
+
+  return null;
+};
 
 // @desc    Generate a timetable
 // @route   POST /api/admin/timetable/generate
@@ -236,57 +339,146 @@ export const exportTimetable = async (req, res) => {
 export const moveTimetableEntry = async (req, res) => {
   try {
     const { entryId } = req.params;
-    const { newDay, newPeriod, newRoomId } = req.body;
+    const { newDay, newPeriod } = req.body;
     
     const timetable = await Timetable.findOne({ "entries._id": entryId });
     if (!timetable) return res.status(404).json({ message: "Entry not found" });
     
     const entry = timetable.entries.id(entryId);
-    
-    // Validate Clash
-    // Is faculty free?
-    const facClash = timetable.entries.find(e => 
-      e.day === newDay && e.period === newPeriod && 
-      e.facultyId.toString() === entry.facultyId.toString() && 
-      e._id.toString() !== entryId && !e.isCancelled
+    if (!entry) {
+      return res.status(404).json({ message: "Entry not found" });
+    }
+
+    if (entry.isCancelled) {
+      return res.status(400).json({ message: "Cancelled classes cannot be moved" });
+    }
+
+    if (entry.isLab && Number(entry.labBlock) > 1) {
+      return res.status(400).json({ message: "Drag the first period of a lab block to reschedule the full lab" });
+    }
+
+    const targetPeriod = Number(newPeriod);
+    if (!newDay || Number.isNaN(targetPeriod)) {
+      return res.status(400).json({ message: "New day and period are required" });
+    }
+
+    const moveContext = await buildMoveContext(timetable, entry);
+    if (moveContext.error) {
+      return res.status(moveContext.error.status).json({ message: moveContext.error.message });
+    }
+
+    const {
+      constraint,
+      rooms,
+      facultyPreference,
+      moveEntries,
+      moveEntryIds,
+    } = moveContext;
+
+    const workingDays = new Set([...(constraint.workingDays || []), ...RESCHEDULE_EXTRA_DAYS]);
+    const periodsPerDay = Number(constraint.periodsPerDay) || 8;
+    const breakPeriods = new Set((constraint.breakPeriods || []).map(Number));
+
+    if (!workingDays.has(newDay)) {
+      return res.status(400).json({ message: "Target day is outside the configured working days" });
+    }
+
+    const targetPeriods = moveEntries.map((_, index) => targetPeriod + index);
+    if (targetPeriods.some((period) => period < 1 || period > periodsPerDay)) {
+      return res.status(400).json({ message: "Target slot exceeds the configured periods for the day" });
+    }
+
+    if (targetPeriods.some((period) => breakPeriods.has(period))) {
+      return res.status(409).json({ message: "Class cannot be moved into a break period" });
+    }
+
+    const unavailableSlot = targetPeriods.find((period) =>
+      facultyPreference?.unavailableSlots?.some(
+        (slot) => slot.day === newDay && Number(slot.period) === period
+      )
     );
-    
-    // Is room free?
-    const roomClash = timetable.entries.find(e => 
-      e.day === newDay && e.period === newPeriod && 
-      e.roomId.toString() === newRoomId && 
-      e._id.toString() !== entryId && !e.isCancelled
+
+    if (unavailableSlot) {
+      return res.status(409).json({
+        message: `Faculty is unavailable on ${newDay} period ${unavailableSlot}`,
+      });
+    }
+
+    const facClash = moveEntries.find((blockEntry, index) =>
+      timetable.entries.some((candidate) =>
+        !candidate.isCancelled &&
+        !moveEntryIds.has(asId(candidate._id)) &&
+        candidate.day === newDay &&
+        Number(candidate.period) === targetPeriod + index &&
+        asId(candidate.facultyId) === asId(blockEntry.facultyId)
+      )
     );
-    
-    // Is section free?
-    const secClash = timetable.entries.find(e => 
-      e.day === newDay && e.period === newPeriod && 
-      e.sectionId === entry.sectionId && 
-      e._id.toString() !== entryId && !e.isCancelled
+
+    if (facClash) {
+      return res.status(409).json({ message: "Faculty already has another class in the selected slot" });
+    }
+
+    const secClash = moveEntries.find((_, index) =>
+      timetable.entries.some((candidate) =>
+        !candidate.isCancelled &&
+        !moveEntryIds.has(asId(candidate._id)) &&
+        candidate.day === newDay &&
+        Number(candidate.period) === targetPeriod + index &&
+        candidate.sectionId === entry.sectionId &&
+        Number(candidate.year) === Number(entry.year)
+      )
     );
-     
-    let clashReason = [];
-    if (facClash) clashReason.push("Faculty already evaluating another class.");
-    if (roomClash) clashReason.push("Room is occupied.");
-    if (secClash) clashReason.push("Section is busy.");
-    
-    if (clashReason.length > 0) {
-      return res.status(409).json({ message: "Conflict detected", details: clashReason.join(" ") });
+
+    if (secClash) {
+      return res.status(409).json({ message: "Students in this section already have another class in that slot" });
+    }
+
+    const selectedRoom = findCompatibleRoom({
+      entries: timetable.entries,
+      moveEntries,
+      moveEntryIds,
+      rooms,
+      entry,
+      newDay,
+      newPeriod: targetPeriod,
+    });
+
+    if (!selectedRoom) {
+      return res.status(409).json({
+        message: entry.isLab
+          ? "No lab room is free for the full target block"
+          : "No room is free for the selected slot",
+      });
+    }
+
+    const samePlacement =
+      entry.day === newDay &&
+      Number(entry.period) === targetPeriod &&
+      asId(entry.roomId) === asId(selectedRoom._id);
+
+    if (samePlacement) {
+      return res.json({ message: "Class is already scheduled in that slot", entry });
     }
     
-    entry.day = newDay;
-    entry.period = newPeriod;
-    entry.roomId = newRoomId;
+    moveEntries.forEach((blockEntry, index) => {
+      blockEntry.day = newDay;
+      blockEntry.period = targetPeriod + index;
+      blockEntry.roomId = selectedRoom._id;
+    });
     
     timetable.auditLog.push({
       changedBy: req.user._id,
       changeType: "manual_override",
-      description: `Moved course ${entry.courseId} to ${newDay} period ${newPeriod}`
+      description: `Moved course ${entry.courseId} (${entry.sectionId}) to ${newDay} period ${targetPeriod}${entry.isLab ? `-${targetPeriod + moveEntries.length - 1}` : ""} in room ${selectedRoom.roomId}`
     });
     
     await timetable.save();
     
-    res.json({ message: "Moved successfully", entry });
+    res.json({
+      message: "Moved successfully",
+      movedEntryIds: moveEntries.map((blockEntry) => blockEntry._id),
+      roomId: selectedRoom.roomId,
+    });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
